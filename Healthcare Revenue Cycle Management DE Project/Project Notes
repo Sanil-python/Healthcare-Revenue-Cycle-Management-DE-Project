@@ -1,0 +1,681 @@
+
+Ultimate Data Engineering Program by Sumit Sir
+https://trendytech.in
+
+Technology - Azure Data Engineering Stack
+
+Domain - Healthcare Revenue Cycle Management (RCM)
+
+RCM is the process that hospitals use to manage the financial aspects, from the time the patient schedules an appointment till the time the provider gets paid..
+
+Here is a simplified breakdown:
+
+1. It starts with a patient visit:
+ patient details are collected, Insurance details..
+ This ensures provider knows who will pay for the services
+ insurance, the patient, or both 
+
+ 20000 USD
+
+ 15000 USD - Insurance
+ 5000 USD - Patient
+
+
+2. Services are provided
+
+
+3. Billing happens: The hospital will create a bill.
+
+
+4. Claims are reviewed: Insurance company review the bill
+
+they might accept it, pay in full, or partial or decline.
+
+
+5. Payments and followups
+
+if partial payment is done by insurance company,
+
+then some portion or complete thing is given by the patient...
+
+and the providers will followup for the payment
+
+
+6. Tracking and improvement: 
+
+RCM ensures the hospital can provide quality care while also staying financially healthy.
+
+
+As part of RCM we have 2 main aspects
+
+- Accounts Receivable (AR)
+- Accounts Payable
+
+
+Patient paying is often a risk
+
+scenarios when patient has to pay
+
+Low Insurance - these insurance providers put most of the burden on patients..
+
+Private Clinics
+Dental treatments
+Deductibles
+
+2 objectives for AR
+- Bring cash
+- also minimize the collection period
+
+the probability of collecting your full amount decreases with time..
+
+- 93% of money due 30 days old...
+- 85% of money due 60 days old...
+- 73% of money due 90 days old...
+
+KPI to measure AR and set benchmarks...
+
+1. AR > 90 days...
+
+200K USD older then 90 days
+
+1 million USD
+
+200k / 1 million = 20%
+
+
+2. Days in AR
+
+1 million USD in 100 days
+
+per day 10000 USD
+
+400K USD AR
+
+40 DAY
+
+45 Days..
+
+
+what do we have to do as a Data Engineering
+
+we will have data in various Sources
+
+we need to create a pipeline, the result of this pipeline will be fact tables and dimension tables, will help the reporting team to generate the KPI
+
+
+
+Datasets
+=========
+
+EMR Data - Electronic Medical Records (Azure SQL DB)
+	- Patients
+	- Providers
+	- Department
+	- Transactions
+	- Encounter
+
+
+Bangalore
+
+Manipal hospital
+
+Columbia Asia
+
+Hospital a - trendytech-hospital-a
+Hospital b - trendytech-hospital-b
+
+
+Claims Data - Insurance company (Flat files)
+folder in Datalake - Landing (monthly once)
+
+
+NPI Data - National Provider Identifier (Public API)
+
+ICD Data - ICD codes are a standardized system used by health care providers map diagnosis code and description. (API)
+
+
+EMR (Database)
+
+Claims (Flat files)
+
+API (NPI / ICD)
+
+Solution Architecture
+
+Medallion Architecture
+
+landing 	->  bronze 			-> 		silver 			->   gold
+
+flat file   -> parquet files	->		Delta Tables	-> 	 Delta tables
+
+
+EMR (SQL DB)
+Claims (FLat files)
+Codes (Parquet Files)
+
+bronze - parquet format (source of truth)
+silver - data cleaning, enrich, CDM (common data model), SCD2
+gold - aggregation, Fact table and Dimension table
+
+
+Gold - Business Users
+
+Silver - Data Scientist, Machine Learning, Data Analysts
+
+Bronze - Data Engineer
+
+
+
+
+Fact -  a numeric value
+
+Dimension - supporting things (SCD2)
+
+EMR data -> bronze layer
+
+
+
+Azure Data Factory (For Ingestion)
+
+Azure Databricks - for our data processing
+
+Azure SQL DB - EMR
+
+Azure SA - Raw files, parquet files
+
+Key Vault - for storing the credentials
+
+
+
+Azure Storage Account
+
+ttadlsdev (adls gen2)
+	- landing
+	- bronze
+	- silver
+	- gold
+
+	- configs (metadata driven pipeline)
+		emr
+			load_config.csv
+
+database,datasource,tablename,loadtype,watermark,is_active,targetpath
+trendytech-hospital-a,hos-a,dbo.encounters,Incremental,ModifiedDate,0,hosa
+trendytech-hospital-a,hos-a,dbo.patients,Incremental,ModifiedDate,0,hosa
+trendytech-hospital-a,hos-a,dbo.transactions,Incremental,ModifiedDate,0,hosa
+trendytech-hospital-a,hos-a,dbo.providers,Full,,0,hosa
+trendytech-hospital-a,hos-a,dbo.departments,Full,,0,hosa
+trendytech-hospital-b,hos-b,dbo.encounters,Incremental,ModifiedDate,0,hosb
+trendytech-hospital-b,hos-b,dbo.patients,Incremental,Updated_Date,1,hosb
+trendytech-hospital-b,hos-b,dbo.transactions,Incremental,ModifiedDate,0,hosb
+trendytech-hospital-b,hos-b,dbo.providers,Full,,0,hosb
+trendytech-hospital-b,hos-b,dbo.departments,Full,,0,hosb
+
+EMR (Azure SQL DB) -> ADLS Gen2 (Bronze folder in Parquet format)
+
+we will create a audit table (Delta Table)
+
+ADF pipeline
+
+Linked Service
+ - Azure SQL DB 
+ - ADLS Gen2 
+ - Delta Lake
+ - Key Vault
+
+Datasets
+ - Azure SQL (DB database name / table name / schema name)
+ - Delimited text (ADLS Gen2)
+ - Parquet (ADLS Gen2)
+ - Databricks delta lake (Delta Lake)
+
+
+
+Pipeline
+	Dataset
+		Linked Service
+
+
+
+Activities
+
+Pipeline
+
+
+
+CREATE SCHEMA IF NOT EXISTS audit;
+
+CREATE TABLE IF NOT EXISTS audit.load_logs (
+    id BIGINT GENERATED ALWAYS AS IDENTITY,
+    data_source STRING,
+    tablename STRING,
+    numberofrowscopied INT,
+    watermarkcolumnname STRING,
+    loaddate TIMESTAMP
+);
+
+Linked Service
+ - Azure SQL DB 
+ - ADLS Gen2 
+ - Delta Lake
+
+
+Datasets
+
+ 1. Azure SQL DB 
+
+ db_name (linked service)
+ schema name
+ table name
+
+ 2. our config file
+
+ adls gen2 (delimited file)
+
+ container name
+ file path
+ file name
+
+ configs/emr/load_config.csv
+
+
+3.  adls gen2 (parquet file)
+
+
+4. Databricks Delta Lake 
+   schema (database name)
+   table name
+
+
+Pipeline is made of activities
+
+lookup activity will read the config file 
+configs/emr/load_config.csv
+
+
+encounters
+
+container - bronze
+file_path - hosa
+file_name - encounters
+
+bronze/hosa/encounters.parquet
+
+database,datasource,tablename,loadtype,watermark,is_active,targetpath
+trendytech-hospital-a,hos-a,dbo.encounters,Incremental,ModifiedDate,0,hosa
+trendytech-hospital-a,hos-a,dbo.patients,Incremental,ModifiedDate,0,hosa
+trendytech-hospital-a,hos-a,dbo.transactions,Incremental,ModifiedDate,0,hosa
+trendytech-hospital-a,hos-a,dbo.providers,Full,,0,hosa
+trendytech-hospital-a,hos-a,dbo.departments,Full,,0,hosa
+trendytech-hospital-b,hos-b,dbo.encounters,Incremental,ModifiedDate,0,hosb
+trendytech-hospital-b,hos-b,dbo.patients,Incremental,Updated_Date,1,hosb
+trendytech-hospital-b,hos-b,dbo.transactions,Incremental,ModifiedDate,0,hosb
+trendytech-hospital-b,hos-b,dbo.providers,Full,,0,hosb
+trendytech-hospital-b,hos-b,dbo.departments,Full,,0,hosb
+
+
+if the file exists 
+
+True
+
+move it to archive
+
+source: container - bronze
+file_path - hosa
+file_name - encounters
+
+
+target: container - bronze
+file_path - hosa / archive / year / month /day
+file_name - encounters
+
+
+first read the config file
+
+iterate over each entity one by one (10 entries)
+
+forEach
+
+trendytech-hospital-a,hos-a,dbo.encounters,Incremental,ModifiedDate,0,hosa
+
+if the encounters.parquet file is present in bronze folder
+
+then we move it to archive...
+
+take the data from Azure SQL DB and put in Bronze container
+
+source - azure sql db
+
+target - parquet generic
+
+if its a full load or incremental
+
+if load type is full what we need to do..
+
+select * from table 
+
+source - SQL DB
+
+Database name
+Schema name
+Table name
+
+@concat('insert into audit.load_logs(data_source,tablename,numberofrowscopied,watermarkcolumnname,loaddate) values (''',item().datasource,''', ''',item().tablename,''',''',activity('Full_Load_CP').output.rowscopied,''',''',item().watermark,''',''',utcNow(),''')')
+
+
+Incremental
+
+1. check the audit table
+
+@concat('select coalesce(cast(max(loaddate) as date),''','1900-01-01',''') as last_fetched_date from audit.load_logs where',' data_source=''',item().datasource,''' and tablename=''',item().tablename,'''')
+
+21st Nov 2024: 8:54 PM
+
+= > 21st Nov 2024
+
+bronze/<target-path>/
+
+@concat('select *,''',item().datasource,''' as datasource from ',item().tablename,' where ',item().watermark,' >= ''',activity('Fetch_logs').output.firstRow.last_fetched_date,'''')
+
+@concat('insert into audit.load_logs(data_source,tablename,numberofrowscopied,watermarkcolumnname,loaddate) values (''',item().datasource,''', ''',item().tablename,''',''',activity('Incremental_Load_CP').output.rowscopied,''',''',item().watermark,''',''',utcNow(),''')')
+
+10 entries
+
+Sequential 
+
+Parallel
+
+
+Part - 2
+=========
+
+Implement the silver layer
+
+Clean / CDM / SCD2 / Delta tables
+
+Implementing Gold Layer
+
+Facts and Dims
+
+Implementing Key vault
+
+Improve the naming convensions
+
+Make ADF pipeline parallel
+
+API's
+
+Claims Data
+
+is_active flag implementation
+
+Implement the Unity Catalog
+
+Right now our catalog is a hive metastore which is local
+
+
+
+Part 2 - Azure Data Engineering Project
+
+if not seen part 1 then please have a look.
+
+
+EMR - (Azure SQL DB)
+
+ - Patients
+ - Providers
+ - Department
+ - Transactions
+ - Encounters
+
+ we already got the EMR data in bronze layer in parquet format
+
+ ADF pipeline
+
+ Insurance provier dumps the Claims data in landing folder
+
+ landing -> flat files (csv)
+
+ bronze -> parquet
+
+ silver - delta tables
+
+ gold - delta table
+
+
+EMR - Azure SQL DB (bronze)
+
+Claims - Flat file (landing zone)
+
+NPI / ICD codes (API)  (bronze)
+
+CPT code (flat file) (landing zone)
+
+
+Bronze Layer
+=============
+
+=> claims data from landing to bronze
+
+=> NPI and ICD data (call api and directly put to bronze)
+
+=> CPT data from landing to bronze
+
+Note that in bronze every thing we are keeping in parquet format.
+
+difference between ICD codes CPT codes
+========================================
+
+https://www.simplepractice.com/blog/icd-codes-and-cpt-codes/
+
+
+Bronze to Silver Layer
+=======================
+
+clean
+CDM
+SCD2
+Delta table
+
+
+Silver to Gold
+================
+
+Facts and Dims
+
+
+Best Practices / Enhancements
+==============================
+
+Implement Key vault
+
+Improvise on naming convention
+
+Make ADF pipeline parallel
+
+is_active flag implement
+
+Implement the unity catalog
+
+adding retries
+
+
+Few things to Note - 
+
+1. All the data provided is generated using faker module
+
+2. Data discrepancy and some joins might not work.
+
+Improved the naming convension / organized the code well.
+
+
+unity catalog
+
+catalog name -> Schema name (Database) -> Table name
+
+dbutils.secrets.get('tt-hc-kv', 'tt-adls-access-key-dev')
+
+how to setup the key vault
+===========================
+
+tt-health-care-kv (azure portal)
+
+create the secrets
+
+https://adb-2871789655161196.16.azuredatabricks.net#secrets/createScope
+
+if you want to access the key vault
+
+go to app registration
+
+create a app for the service (ADF, ADB)
+
+go to the key vault -> access policies
+
+Linked Services
+================
+
+- Azure SQL DB
+- ADLS Gen2
+- Delta Lake
+- Key Vault (new one) done
+- Databricks (new one) done
+
+
+Datasets
+=========
+
+Azure SQL
+Delimited text
+Parquet
+Databricks delta lake
+
+
+
+pipeline
+	dataset
+		linked service
+
+
+=> implemented the active/inactive flag
+=> implemented the key vault
+=> made the pipeline from sequential to parallel
+=> created a linked service for azure key vault
+=> create one more linked service for databricks
+=> improvised on the naming and folder structure
+
+EMR data to the bronze
+
+claims and the NPI, ICD,CPT
+
+Claims and CPT (landing -> bronze)
+
+NPI and ICD codes (api -> bronze)
+
+=> NPI code starts with 1, but in our datasets its different.
+
+=> Data extracted from the API's is very less, so when you make join you may see lot of nulls.
+
+Claims and CPT (landing -> bronze)
+
+Bronze to Silver
+=================
+
+EMR Data
+ - Patients SCD2
+ - Providers (full load)
+ - Department (full load)
+ - Transactions SCD2
+ - Encounters SCD2
+
+Claims & CPT SCD2
+
+NPI and ICD codes  SCD2
+
+complete refresh scenario
+scd2
+
+for patients we have to implement SCD2
+
+CDM - Done
+Quality checks - Done (is_quarantined)
+
+SCD2 - 
+inserted_date TIMESTAMP,
+modified_date TIMESTAMP,
+is_current BOOLEAN
+
+
+Sumit - Hyderabad (himayat nagar)
+inserted date - 11th Nov 2022
+modified date - 11th Nov 2022
+is_current true
+
+
+modified date - 1st Jan 2024
+is_current false
+
+
+Sumit - Hyderabad (Tarnaka)
+
+inserted date 		1st Jan 2024
+modified date -   1st Jan 2024
+is_active - true
+
+
+target table - silver.patients
+
+source table - quality_checks
+
+patient_key
+
+101 - Hyderabad Himayat Nagar 
+inserted date - 11th Nov 2022
+modified date - 11th Nov 2022
+is_current true
+
+modified date - 1st Jan 2024
+is_current - false
+
+yet to be done
+================
+101 Sumit Hyderabad Tarnaka
+is_current true
+inserted date - 1st Jan 2024
+modified date - 1st Jan 2024
+
+
+New record
+
+Update 
+ - end dated the previous one and marked it as inactive
+ - inserted a new one
+
+CDM (common Schema)
+Quality Checks (quarantine bad records)
+SCD2
+
+Silver to Gold
+================
+
+is_current = true
+
+is_quarantined = false
+
+/Users/trendytech.sumit501@outlook.com/3. Silver/Transactions
+
+ADF
+
+Bronze Layer
+
+EMR Data
+Claims
+Codes
+
+Github
+=======
+
+username
+token
+
+
